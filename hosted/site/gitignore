@@ -1,0 +1,15 @@
+.vercel/
+node_modules/
+.env*
+*.edf
+*.EDF
+*.bdf
+key.csv
+clips.csv
+seconds.csv
+plan.json
+*id_map*
+.token
+.raters.json
+.assignment.json
+labels_*.csv

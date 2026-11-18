@@ -1,0 +1,27 @@
+# Study data and secrets never go in this repository
+*.edf
+*.EDF
+*.bdf
+*.BDF
+key.csv
+!sample_batch/key.csv
+clips.csv
+clips_*.csv
+seconds.csv
+admin.csv
+plan.json
+*id_map*
+.token
+.raters.json
+.assignment.json
+.results.json
+labels_*.csv
+results_patients.csv
+merged_labels.csv
+.env*
+# Tooling
+node_modules/
+.vercel/
+__pycache__/
+*.pyc
+.DS_Store

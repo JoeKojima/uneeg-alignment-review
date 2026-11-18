@@ -1,0 +1,3 @@
+#!/bin/sh
+# Refuses a commit when the site folder holds anything but the viewer, the server code and blinded batches.
+exec python3 tools/check_upload.py .

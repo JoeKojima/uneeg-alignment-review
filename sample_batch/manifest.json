@@ -1,0 +1,76 @@
+{
+  "packager_version": "1.6.0",
+  "created": "2026-10-23T06:06:43Z",
+  "mode": "rater",
+  "synthetic": true,
+  "fs": 200.0,
+  "clip_s": 12.0,
+  "pad_s": 1.0,
+  "candidate_s": 1.0,
+  "seed": 2026,
+  "n_clips": 20,
+  "n_repeats": 0,
+  "channels": [
+    "Fp1",
+    "F3",
+    "C3",
+    "P3",
+    "F7",
+    "T3",
+    "T5",
+    "O1",
+    "Fz",
+    "Cz",
+    "Pz",
+    "Fp2",
+    "F4",
+    "C4",
+    "P4",
+    "F8",
+    "T4",
+    "T6",
+    "O2",
+    "EKG"
+  ],
+  "answers": [
+    "yes",
+    "no"
+  ],
+  "shared_clips": 0,
+  "batches": [
+    {
+      "file": "b01.json.gz",
+      "batch_id": "b01",
+      "n_clips": 20,
+      "shared": false,
+      "bytes": 1894634,
+      "sha256": "b42ed41387c19589a82c0fe81d95ed34d786b0ad997d5b0c60c4cac3cdf49870"
+    }
+  ],
+  "key_file": "key.csv",
+  "args": {
+    "command": "synthetic",
+    "n": 20,
+    "out": "sample_batch",
+    "mode": "rater",
+    "fs": 200.0,
+    "clip_s": 12.0,
+    "pad_s": 1.0,
+    "candidate_s": 1.0,
+    "batch_size": 20,
+    "batch_prefix": "b",
+    "seed": 2026,
+    "repeat_frac": 0.0,
+    "gzip": true,
+    "notch": "on",
+    "answers": "yn",
+    "shared_clips": 0,
+    "extras": [
+      "EKG"
+    ],
+    "extras_all": [
+      "EKG"
+    ],
+    "subq_names": []
+  }
+}

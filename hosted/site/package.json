@@ -1,0 +1,6 @@
+{
+  "name": "ied-review-site",
+  "private": true,
+  "description": "IED clip review: rater links for blinded EEG clips. No dependencies.",
+  "type": "module"
+}
