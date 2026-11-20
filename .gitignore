@@ -31,3 +31,11 @@ align_review/
 *_key.csv
 !demo_alignment/align01_key.csv
 dist/
+# no batch files except the synthetic ones (a real batch is patient EEG, wherever it is saved)
+*.json.gz
+*.json
+!sample_batch/*.json.gz
+!sample_batch/manifest.json
+!demo_alignment/*.json.gz
+!hosted/site/package.json
+!hosted/site/vercel.json
