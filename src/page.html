@@ -644,7 +644,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     // a scalp batch for raters never shows SubQ lanes; a UNEEG-only batch (kit 1.8) is nothing but them, and
     // training examples (kit 1.8.1, view both) show them under the scalp on purpose
     if (batch.mode === 'rater' && batch.view !== 'subq' && batch.view !== 'both') {
-      for (const g of Object.keys(batch.groups)) if (/sub\s*q|^sq/i.test(g)) state.hiddenGroups.add(g);
+      for (const g of Object.keys(batch.groups)) if (/sub\s*q|^sq|uneeg/i.test(g)) state.hiddenGroups.add(g);
       if (state.hiddenGroups.size) toast('This blinded batch contained subcutaneous channels. They stay hidden.', 6000);
     }
     state.seed = Core.raterSeed(batch, state.rater);
@@ -902,7 +902,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   let layout = null;
 
   function sideColor(r) {
-    if (r.extraGroup) return /sub\s*q|^sq/i.test(r.extraGroup) ? C.subq : C.extra;
+    if (r.extraGroup) return /sub\s*q|^sq|uneeg/i.test(r.extraGroup) ? C.subq : C.extra;
     if (r.side === 'L') return C.left;
     if (r.side === 'R') return C.right;
     return C.mid;
@@ -1053,10 +1053,11 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       let m = 0;
       for (let i = i0; i <= i1; i++) m += r.values[i];
       m /= (i1 - i0 + 1);
-      const subq = !!r.extraGroup && /sub\s*q|^sq/i.test(r.extraGroup);
+      const subq = !!r.extraGroup && /sub\s*q|^sq|uneeg/i.test(r.extraGroup);
       let gain = pxPerUv;
       if (r.extraGroup && !subq) {
-        // EKG and other non-EEG channels are scaled to fit their own row.
+        // EKG and other non-EEG channels are scaled to fit their own row; SubQ / UNEEG (and virtual UNEEG) lanes are
+        // EEG and keep the scalp's gain, so the sensitivity setting (and scrolling) changes them too.
         let pk = 0;
         for (let i = i0; i <= i1; i++) { const v = Math.abs(r.values[i] - m); if (v > pk) pk = v; }
         if (pk > 0) gain = (0.42 * rowH) / pk;
@@ -1561,7 +1562,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       'notch ' + (s.notch ? 'on' : 'off'),
       (clipQuestion() ? 10 : s.win) + ' s page'
     ];
-    const autoGroups = [...new Set(rowsFor(clip).filter(r => r.extraGroup && r.values && !/sub\s*q|^sq/i.test(r.extraGroup))
+    const autoGroups = [...new Set(rowsFor(clip).filter(r => r.extraGroup && r.values && !/sub\s*q|^sq|uneeg/i.test(r.extraGroup))
       .map(r => r.extraGroup))];
     if (autoGroups.length) parts.push(autoGroups.join(', ') + ' scaled to fit');
     $('chartFoot').innerHTML = parts.map(p => '<span>' + p + '</span>').join('');
