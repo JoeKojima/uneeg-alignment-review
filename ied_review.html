@@ -1743,7 +1743,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     const rows = rowsFor(clip);
     const W = Math.max(280, Math.floor(chartEl.clientWidth));
     const narrow = W < 640;
-    const labelW = narrow ? 60 : 80, headerH = 26, footerH = 12, rightPad = narrow ? 8 : 16;
+    const labelW = alignQ() ? (narrow ? 96 : 124) : narrow ? 60 : 80, headerH = 26, footerH = 12, rightPad = narrow ? 8 : 16;
     let nGaps = 0;
     for (let i = 1; i < rows.length; i++) if (rows[i].group !== rows[i - 1].group) nGaps++;
     const ad = state.admin.strips ? adminItem(clip) : null;
@@ -2410,7 +2410,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     }
     if (clip.meta && typeof clip.meta === 'object') for (const [k, v] of Object.entries(clip.meta)) add(k, String(v));
     if (Array.isArray(clip.markers)) for (const m of clip.markers) add('Marker', (m.label || m.kind) + ' at ' + fmtSec(Number(m.t) - Number(clip.event_s != null ? clip.event_s : state.batch.eventS)));
-    add('Candidate', 'center at ' + Number(clip.event_s != null ? clip.event_s : state.batch.eventS).toFixed(2) + ' s of ' + state.batch.clipS + ' s');
+    if (!alignQ()) add('Candidate', 'center at ' + Number(clip.event_s != null ? clip.event_s : state.batch.eventS).toFixed(2) + ' s of ' + state.batch.clipS + ' s');
     sec.hidden = false;
   }
 
