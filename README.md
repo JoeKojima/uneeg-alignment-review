@@ -48,6 +48,7 @@ or **Unsure** (keys Y, N, U) and can add a note; nothing moves on until they pre
   It writes `align_review/align01.json.gz` (the clips) and `align01_key.csv` (patient, seizure, onsets, implant
   side). Both hold patient data: share them privately, never through this repository. `--random` makes one
   random 60-s clip per patient instead.
+- Hosted with a password: `python encrypt_batch.py align_review/align01.json.gz reviews/align01.enc --new-password-file <outside the repo>/PASSWORD.txt` encrypts the batch (AES-256-GCM, key from PBKDF2-SHA256 of the password); `ied_review.html?review=align01` (where `index.html` points) asks for the password, decrypts in the browser and opens the review, starting each clip centred on its scalp onset with a 20-s page. Scroll sideways (or Shift + scroll) to move in time, up or down for amplitude. The .enc file is public; only the password protects it, so share the password separately.
 - Review: open `ied_review.html` (or the hosted page), choose **Open batch**, pick `align01.json.gz`, enter your
   initials. Keys: `[` `]` (or Page Up / Page Down, or the arrows in the Time control) page through the clip,
   Y / N / U answer, right arrow next patient. **Export labels** saves the CSV to send back; `decision` is yes

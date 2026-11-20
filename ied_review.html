@@ -392,7 +392,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     <div class="ctl"><label class="ctl-label" for="hffSel">HFF</label><select id="hffSel"></select></div>
     <div class="ctl"><button class="toggle" id="notchBtn" type="button" aria-pressed="false">60 Hz notch</button></div>
     <div class="ctl" id="winCtl"><span class="ctl-label">Page</span><div class="seg" id="winSeg" role="group" aria-label="Seconds per page">
-      <button type="button" data-win="10" aria-pressed="true">10 s</button><button type="button" data-win="5" aria-pressed="false">5 s</button>
+      <button type="button" data-win="20" aria-pressed="false" id="win20" hidden>20 s</button><button type="button" data-win="10" aria-pressed="true">10 s</button><button type="button" data-win="5" aria-pressed="false">5 s</button>
     </div></div>
     <div class="ctl" id="pageCtl" hidden><span class="ctl-label">Time</span><div class="seg" role="group" aria-label="Page through the clip">
       <button type="button" id="pgPrev" title="Earlier page ([ or Page Up)">&larr; <kbd>[</kbd></button><button type="button" id="pgText" disabled></button><button type="button" id="pgNext" title="Later page (] or Page Down)"><kbd>]</kbd> &rarr;</button>
@@ -450,6 +450,21 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       </section>
     </aside>
   </main>
+</div>
+
+<div class="modal" id="pwModal" hidden>
+  <form class="modal-card" id="pwForm" role="dialog" aria-modal="true" aria-labelledby="pwTitle" novalidate>
+    <h2 id="pwTitle">UNEEG time-alignment review</h2>
+    <p>The clips are research EEG. Enter the password you were given to open them; they are decrypted in this browser and nothing is sent anywhere.</p>
+    <div class="field">
+      <label class="note-label" for="pwInput">Password</label>
+      <input id="pwInput" type="password" autocomplete="current-password" spellcheck="false">
+      <span class="field-error" id="pwError"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" type="submit" id="pwSubmit">Open the clips</button>
+    </div>
+  </form>
 </div>
 
 <div class="modal" id="raterModal" hidden>
@@ -697,6 +712,20 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   }
 
   /* ---------- batches ---------- */
+
+  // A batch encrypted by encrypt_batch.py: "ALN1", 16-byte salt, 12-byte IV, then AES-256-GCM ciphertext of the
+  // .json.gz bytes; the key is PBKDF2-SHA256 of the password (iterations in bytes 4-8, big-endian).
+  async function decryptBatchBytes(bytes, password) {
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (magic !== 'ALN1') throw new Error('This is not an encrypted review batch.');
+    const iter = ((bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7]) >>> 0;
+    const salt = bytes.slice(8, 24), iv = bytes.slice(24, 36), ct = bytes.slice(36);
+    const subtle = (typeof crypto !== 'undefined' && crypto.subtle) ? crypto.subtle : require('crypto').webcrypto.subtle;
+    const base = await subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+    const key = await subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base,
+      { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    return new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+  }
 
   function parseBatch(obj) {
     if (!obj || typeof obj !== 'object' || obj.format !== FORMAT) {
@@ -1374,7 +1403,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 
   const Core = {
     VERSION, FORMAT, FORMAT_VERSION, SCALP, POS, REGION, MONTAGES, MONTAGE_ORDER, EXPORT_COLUMNS, DEMO_SPECS, parseAdmin,
-    normalizeName, sideOf, locationSummary, b64ToBytes, bytesToB64, decodeClip, encodeClip, parseBatch,
+    normalizeName, sideOf, locationSummary, b64ToBytes, bytesToB64, decodeClip, encodeClip, parseBatch, decryptBatchBytes,
     clipSignals, deriveRows, designFilters, filtfilt, applyFilters, cyrb32, mulberry32, shuffledOrder,
     raterSeed, csvCell, toCSV, parseCSV, exportRows, importRows, spikeShape, synthClip, makeDemoBatch, binLabel, simpleKey
   };
@@ -1391,7 +1420,10 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   // The hosted review site (make_site.py) marks its copy of the viewer; it runs like the Borel tunnel. Any other
   // hosted copy is the synthetic demo.
   const SITE = !!document.querySelector('meta[name="ied-review-site"]');
-  const LOCAL = SITE || location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  // An alignment review page (alignment-review branch): ?review=NAME opens reviews/NAME.enc, a batch encrypted
+  // with a password (encrypt_batch.py), instead of the demo; it runs like a local copy (files, downloads).
+  const REVIEW = (() => { try { const v = new URLSearchParams(location.search).get('review') || ''; return /^[A-Za-z0-9_-]{1,40}$/.test(v) ? v : ''; } catch (e) { return ''; } })();
+  const LOCAL = SITE || !!REVIEW || location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   // Server mode: served by serve_review.py through an SSH tunnel, or by the hosted review site. Batches load from
   // the server and labels save back to it; nothing is written to this computer except the browser's own copy of
   // the labels.
@@ -1521,15 +1553,25 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   // A time-alignment review (alignment-review branch): one long clip per patient, paged through 10 s (or 5 s)
   // at a time from its start; no highlighted second, no field maximum.
   function alignQ() { return !!state.batch && state.batch.question === 'alignment'; }
-  function pageCount() { return Math.max(1, Math.ceil(state.batch.clipS / Number(state.settings.win) - 1e-9)); }
-  function pageStep(d) {
+  // the clip's time zero: its scalp-onset marker (the seizure figure counts time from the scalp onset), else its start
+  function zeroOf(clip) {
+    const m = Array.isArray(clip.markers) ? clip.markers.find(x => x.kind === 'scalp') : null;
+    return m ? Number(m.t) : 0;
+  }
+  // where the page starts, s from the clip start: continuous (scrolling moves it), clamped to the clip
+  function clampT(t, win) { return Math.max(0, Math.min(Math.max(0, state.batch.clipS - win), t)); }
+  function scrollTime(ds) {
     if (!alignQ()) return;
-    const n = pageCount();
-    const k = Math.max(0, Math.min(n - 1, (state.pageOff || 0) + d));
-    if (k === (state.pageOff || 0)) { toast(d > 0 ? 'That is the end of this clip. Next moves to the next patient.' : 'That is the start of this clip.'); return; }
-    state.pageOff = k;
+    const win = Number(state.settings.win);
+    const t = clampT((state.tOff || 0) + ds, win);
+    if (Math.abs(t - (state.tOff || 0)) < 1e-6) {
+      if (Math.abs(ds) >= win / 2) toast(ds > 0 ? 'That is the end of this clip. Next moves to the next seizure.' : 'That is the start of this clip.');
+      return;
+    }
+    state.tOff = t;
     redraw();
   }
+  function pageStep(d) { scrollTime(d * Number(state.settings.win)); }
 
   // the spoken form of the margin raters count around the highlighted second (kit 1.8)
   function toleranceText(batch) {
@@ -1556,6 +1598,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     $('noteLabel').hidden = $('noteInput').hidden = !!batch.teaching;
     for (const id of ['maxSec', 'artRow', 'marksRow', 'markCtl']) $(id).hidden = simple || batch.question === 'alignment';
     $('pageCtl').hidden = batch.question !== 'alignment';
+    $('win20').hidden = batch.question !== 'alignment';
     for (const btn of $('decide').querySelectorAll('.dbtn')) {
       const words = { yes: 'Yes', no: 'No', unsure: 'Unsure' }[btn.dataset.d];
       const text = batch.question === 'alignment' && batch.answerLabels[btn.dataset.d] ? String(batch.answerLabels[btn.dataset.d]) : words;
@@ -1574,8 +1617,10 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     help.textContent = '';
     const k = t => { const e = document.createElement('kbd'); e.textContent = t; return e; };
     if (batch.question === 'alignment') {
-      hint.append('Page through the whole clip with ', k('['), ' ', k(']'), ' (or the arrows in the bar above), then answer: ',
-        k('Y'), ' ', k('N'), ' or ', k('U'), '. Add a note if anything is off. ', k('\u2192'), ' or Next goes to the next patient.');
+      hint.append('Compare the 10-20, simulated UNEEG and UNEEG traces: shared events (blinks, movement, the seizure) should ' +
+        'line up. Scroll sideways (or Shift + scroll, or ', k('['), ' ', k(']'), ') to move in time; scroll up or down for ' +
+        'amplitude. Red: scalp onset; green: UNEEG-annotated onset. Answer ', k('Y'), ' ', k('N'), ' or ', k('U'),
+        ', add a note if useful, then ', k('\u2192'), ' or Next for the next seizure.');
       const a = help.insertCell(), b = help.insertCell();
       a.append(k('Y'), ' ', k('N'), ' ', k('U'), ' ', k('['), ' ', k(']'));
       b.textContent = 'Answer (aligned, not aligned, unsure); earlier or later page of the clip';
@@ -1771,12 +1816,16 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     const x0 = labelW, x1 = W - rightPad, tw = x1 - x0;
     const win = clipQuestion() ? 10 : Number(state.settings.win);
     const al = alignQ();
-    if (al && state.pageClip !== clip.id) { state.pageClip = clip.id; state.pageOff = 0; }
-    if (al) state.pageOff = Math.max(0, Math.min(pageCount() - 1, state.pageOff || 0));
-    const ev = al ? 0 : clip.event_s != null ? Number(clip.event_s) : b.eventS;
-    const tStart = al ? state.pageOff * win : ev - win / 2, pxs = tw / win;
-    if (al) $('pgText').textContent = (state.pageOff + 1) + ' of ' + pageCount() + ' \u00b7 ' + Math.round(tStart) + '\u2013' +
-      Math.round(Math.min(b.clipS, tStart + win)) + ' s of ' + Math.round(b.clipS) + ' s';
+    // a new clip opens centred on its scalp onset
+    if (al && state.pageClip !== clip.id) { state.pageClip = clip.id; state.tOff = clampT(zeroOf(clip) - win / 2, win); }
+    if (al) state.tOff = clampT(state.tOff || 0, win);
+    const ev = al ? zeroOf(clip) : clip.event_s != null ? Number(clip.event_s) : b.eventS;
+    const tStart = al ? state.tOff : ev - win / 2, pxs = tw / win;
+    if (al) {
+      const f = x => (x >= 0 ? '+' : '\u2212') + Math.abs(x).toFixed(0);
+      $('pgText').textContent = f(tStart - ev) + ' to ' + f(tStart + win - ev) + ' s from scalp onset (clip ' +
+        f(-ev) + ' to ' + f(b.clipS - ev) + ' s)';
+    }
     const tx = t => x0 + (t - tStart) * pxs;
     const yTop = headerH, yBot = H - footerH;
 
@@ -1936,8 +1985,10 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
         const col = mk.kind === 'scalp' ? '#d03b3b' : mk.kind === 'uneeg' ? '#0a8f3c' :
           mk.kind === 'cyclops' ? C.cyclops : mk.kind === 'morgoth' ? C.morgoth : C.ink2;
         ctx.strokeStyle = col;
-        ctx.setLineDash([2, 3]);
+        ctx.setLineDash(mk.kind === 'scalp' ? [] : mk.kind === 'uneeg' ? [6, 4] : [2, 3]);
+        ctx.lineWidth = mk.kind === 'scalp' || mk.kind === 'uneeg' ? 1.5 : 1;
         ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yBot); ctx.stroke();
+        ctx.lineWidth = 1;
         ctx.setLineDash([]);
         const text = String(mk.label || mk.kind || 'marker');
         ctx.font = '600 10.5px ' + MONO;
@@ -3107,6 +3158,20 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     e.preventDefault();
   });
 
+  let wheelAcc = 0;
+  chartEl.addEventListener('wheel', e => {
+    if (!alignQ()) return;
+    e.preventDefault();
+    const dx = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+    if (Math.abs(dx) > Math.abs(e.shiftKey ? 0 : e.deltaY)) {
+      const W = Math.max(280, chartEl.clientWidth);
+      scrollTime(dx * (e.deltaMode === 1 ? 16 : 1) * Number(state.settings.win) / W);
+    } else {
+      wheelAcc += e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+      if (Math.abs(wheelAcc) >= 60) { stepSens(wheelAcc < 0 ? -1 : 1); wheelAcc = 0; }
+    }
+  }, { passive: false });
+
   let raf = 0;
   const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => draw()); };
   let lastW = 0;
@@ -3121,8 +3186,36 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 
   readColors();
   buildControls();
-  loadBatch(demoBatch('rater'), { demo: true, rater: 'demo' });
+  if (!REVIEW) loadBatch(demoBatch('rater'), { demo: true, rater: 'demo' });
   if (SERVER) openPicker();
+  if (REVIEW) {
+    $('openBtn').hidden = true;
+    $('pwModal').hidden = false;
+    setTimeout(() => $('pwInput').focus(), 50);
+    $('pwForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const pw = $('pwInput').value;
+      $('pwError').textContent = '';
+      $('pwSubmit').disabled = true;
+      $('pwSubmit').textContent = 'Opening\u2026';
+      try {
+        const res = await fetch('reviews/' + REVIEW + '.enc', { cache: 'no-store' });
+        if (!res.ok) throw new Error('The clips could not be downloaded (' + res.status + ').');
+        const plain = await Core.decryptBatchBytes(new Uint8Array(await res.arrayBuffer()), pw);
+        const batch = await batchFromBytes(plain, REVIEW + '.json.gz');
+        if (batch.question === 'alignment' && ![5, 10, 20].includes(Number(state.settings.win)) || store.get('align-win-set') !== '1') {
+          state.settings.win = 20; store.set('align-win-set', '1');
+        }
+        $('pwModal').hidden = true;
+        startBatch(batch, { kind: 'file' });
+      } catch (err) {
+        $('pwError').textContent = err && err.name === 'OperationError' ? 'That password is not right.' : (err && err.message) || String(err);
+      } finally {
+        $('pwSubmit').disabled = false;
+        $('pwSubmit').textContent = 'Open the clips';
+      }
+    });
+  }
   window.IEDReview = { state, rowsNow: () => (currentClip() ? rowsFor(currentClip()) : []), loadBatchObject: obj => loadBatch(Core.parseBatch(obj), { demo: false, rater: store.get(KEY_RATER) || 'TEST' }) };
 })();
 </script>

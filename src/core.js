@@ -158,6 +158,20 @@
 
   /* ---------- batches ---------- */
 
+  // A batch encrypted by encrypt_batch.py: "ALN1", 16-byte salt, 12-byte IV, then AES-256-GCM ciphertext of the
+  // .json.gz bytes; the key is PBKDF2-SHA256 of the password (iterations in bytes 4-8, big-endian).
+  async function decryptBatchBytes(bytes, password) {
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (magic !== 'ALN1') throw new Error('This is not an encrypted review batch.');
+    const iter = ((bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7]) >>> 0;
+    const salt = bytes.slice(8, 24), iv = bytes.slice(24, 36), ct = bytes.slice(36);
+    const subtle = (typeof crypto !== 'undefined' && crypto.subtle) ? crypto.subtle : require('crypto').webcrypto.subtle;
+    const base = await subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+    const key = await subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base,
+      { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    return new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+  }
+
   function parseBatch(obj) {
     if (!obj || typeof obj !== 'object' || obj.format !== FORMAT) {
       throw new Error('This file is not an IED review batch. Batch files come from make_review_batches.py.');
@@ -834,7 +848,7 @@
 
   const Core = {
     VERSION, FORMAT, FORMAT_VERSION, SCALP, POS, REGION, MONTAGES, MONTAGE_ORDER, EXPORT_COLUMNS, DEMO_SPECS, parseAdmin,
-    normalizeName, sideOf, locationSummary, b64ToBytes, bytesToB64, decodeClip, encodeClip, parseBatch,
+    normalizeName, sideOf, locationSummary, b64ToBytes, bytesToB64, decodeClip, encodeClip, parseBatch, decryptBatchBytes,
     clipSignals, deriveRows, designFilters, filtfilt, applyFilters, cyrb32, mulberry32, shuffledOrder,
     raterSeed, csvCell, toCSV, parseCSV, exportRows, importRows, spikeShape, synthClip, makeDemoBatch, binLabel, simpleKey
   };
