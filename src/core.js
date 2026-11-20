@@ -220,7 +220,11 @@
       display: obj.display && typeof obj.display === 'object' ? obj.display : {},
       answers,
       // what the rater is asked (kit 1.7): about the whole 10 s clip, or about the highlighted second (older batches)
-      question: obj.question === 'clip' ? 'clip' : 'second',
+      question: obj.question === 'clip' ? 'clip' : obj.question === 'alignment' ? 'alignment' : 'second',
+      // a time-alignment review (alignment-review branch): the question and the three answers in words,
+      // e.g. {"yes": "Time aligned", "no": "Not time aligned", "unsure": "Unsure"}
+      questionText: obj.question_text ? String(obj.question_text) : '',
+      answerLabels: obj.answer_labels && typeof obj.answer_labels === 'object' ? obj.answer_labels : {},
       created: obj.created || '',
       notes: obj.notes || '',
       synthetic: !!obj.synthetic,

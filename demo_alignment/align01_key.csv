@@ -1,0 +1,4 @@
+clip_id,patient,implant_side,true_shift_s
+demo1,demo1,left,0.0
+demo2,demo2,right,0.0
+demo3,demo3,left,1.5

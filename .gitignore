@@ -25,3 +25,9 @@ node_modules/
 __pycache__/
 *.pyc
 .DS_Store
+.claude/
+# Alignment review: real batches and their keys hold patient EEG; only the synthetic demo is tracked
+align_review/
+*_key.csv
+!demo_alignment/align01_key.csv
+dist/

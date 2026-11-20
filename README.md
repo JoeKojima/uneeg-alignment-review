@@ -28,6 +28,37 @@ Tools for collecting blinded expert labels on 10-second scalp EEG clips: an adap
 
 Python needs numpy, scipy and pandas; `pyedflib` for EDF input; `mne` only for `--reader mne`.
 
+## Time-alignment review (branch `alignment-review`)
+
+Reviewers check by eye that the UNEEG device is on scalp time, on the seizures that were annotated on both
+systems (the scalp-EEG consensus and the UNEEG reviewers' consensus, converted to scalp time by the lab, within
+60 s of each other): one clip per seizure, from 30 s before to 30 s after the scalp onset, paged 10 s (or 5 s)
+at a time. The 10-20 EEG is on top, the virtual UNEEG pairs nearest the implant under it (F3-T3 and F7-T3 on the
+left, F4-T4 and F8-T4 on the right) and the device's own channels at the bottom (D-C, C-P and D-P); the scalp
+onset is marked red and the UNEEG onset green. For each clip they answer **Time aligned**, **Not time aligned**
+or **Unsure** (keys Y, N, U) and can add a note; nothing moves on until they press the right arrow or Next.
+
+- Build the batch on the server, from the continuous analysis' EDF+D files (one per patient, device already on
+  scalp time):
+  ```
+  python make_alignment_review.py --data /users/joekoji/uneeg_continuous \
+      --sides /users/joekoji/uneeg_continuous/continuous_patient_info.csv \\
+      --onsets /users/joekoji/montage-proj/uneeg_seizure_figures/seizure_onsets.csv --out align_review
+  ```
+  It writes `align_review/align01.json.gz` (the clips) and `align01_key.csv` (patient, seizure, onsets, implant
+  side). Both hold patient data: share them privately, never through this repository. `--random` makes one
+  random 60-s clip per patient instead.
+- Review: open `ied_review.html` (or the hosted page), choose **Open batch**, pick `align01.json.gz`, enter your
+  initials. Keys: `[` `]` (or Page Up / Page Down, or the arrows in the Time control) page through the clip,
+  Y / N / U answer, right arrow next patient. **Export labels** saves the CSV to send back; `decision` is yes
+  (time aligned), no (not time aligned) or unsure, with the note.
+- Try it without data: `python make_alignment_review.py --synthetic --out demo_alignment` writes three made-up
+  clips with shared blinks and chewing; the third has the device 1.5 s late, so it should be marked Not time
+  aligned. The same demo batch is in `demo_alignment/`.
+- Viewer changes (src/core.js, src/page.html; rebuild with `python build.py`): batches with
+  `"question": "alignment"` take their question and answer wording from `question_text` and `answer_labels`,
+  page through the whole clip from its start, and hide the field maximum, artifact and mark controls.
+
 ## Workflow
 
 0. **Read the detector's output** (skip if you already have one row per scored second).

@@ -394,6 +394,9 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     <div class="ctl" id="winCtl"><span class="ctl-label">Page</span><div class="seg" id="winSeg" role="group" aria-label="Seconds per page">
       <button type="button" data-win="10" aria-pressed="true">10 s</button><button type="button" data-win="5" aria-pressed="false">5 s</button>
     </div></div>
+    <div class="ctl" id="pageCtl" hidden><span class="ctl-label">Time</span><div class="seg" role="group" aria-label="Page through the clip">
+      <button type="button" id="pgPrev" title="Earlier page ([ or Page Up)">&larr; <kbd>[</kbd></button><button type="button" id="pgText" disabled></button><button type="button" id="pgNext" title="Later page (] or Page Down)"><kbd>]</kbd> &rarr;</button>
+    </div></div>
     <div class="ctl" id="markCtl"><button class="toggle" id="markBtn" type="button" aria-pressed="false">Mark other discharges <kbd>D</kbd></button></div>
   </nav>
 
@@ -757,7 +760,11 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       display: obj.display && typeof obj.display === 'object' ? obj.display : {},
       answers,
       // what the rater is asked (kit 1.7): about the whole 10 s clip, or about the highlighted second (older batches)
-      question: obj.question === 'clip' ? 'clip' : 'second',
+      question: obj.question === 'clip' ? 'clip' : obj.question === 'alignment' ? 'alignment' : 'second',
+      // a time-alignment review (alignment-review branch): the question and the three answers in words,
+      // e.g. {"yes": "Time aligned", "no": "Not time aligned", "unsure": "Unsure"}
+      questionText: obj.question_text ? String(obj.question_text) : '',
+      answerLabels: obj.answer_labels && typeof obj.answer_labels === 'object' ? obj.answer_labels : {},
       created: obj.created || '',
       notes: obj.notes || '',
       synthetic: !!obj.synthetic,
@@ -1511,6 +1518,18 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   // A clip question (kit 1.7) asks about the whole 10 s: the page stays at 10 s and no second is highlighted,
   // except in the superadmin view, where the highlight marks the second the clip was drawn around.
   function clipQuestion() { return !!state.batch && state.batch.question === 'clip'; }
+  // A time-alignment review (alignment-review branch): one long clip per patient, paged through 10 s (or 5 s)
+  // at a time from its start; no highlighted second, no field maximum.
+  function alignQ() { return !!state.batch && state.batch.question === 'alignment'; }
+  function pageCount() { return Math.max(1, Math.ceil(state.batch.clipS / Number(state.settings.win) - 1e-9)); }
+  function pageStep(d) {
+    if (!alignQ()) return;
+    const n = pageCount();
+    const k = Math.max(0, Math.min(n - 1, (state.pageOff || 0) + d));
+    if (k === (state.pageOff || 0)) { toast(d > 0 ? 'That is the end of this clip. Next moves to the next patient.' : 'That is the start of this clip.'); return; }
+    state.pageOff = k;
+    redraw();
+  }
 
   // the spoken form of the margin raters count around the highlighted second (kit 1.8)
   function toleranceText(batch) {
@@ -1520,6 +1539,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 
   function applyAnswers(batch) {
     $('questionH').textContent = batch.teaching ? 'Training example' :
+      batch.question === 'alignment' ? (batch.questionText || 'Is the UNEEG time-aligned with the 10-20 EEG?') :
       batch.question === 'clip' ? 'Epileptiform discharge anywhere in this clip?' :
       'Epileptiform discharge in the highlighted second?';
     const qh = $('questionHint');
@@ -1534,7 +1554,13 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     // training examples (kit 1.8.5) are shown, not asked: no answer buttons and no note
     $('decide').hidden = !!batch.teaching;
     $('noteLabel').hidden = $('noteInput').hidden = !!batch.teaching;
-    for (const id of ['maxSec', 'artRow', 'marksRow', 'markCtl']) $(id).hidden = simple;
+    for (const id of ['maxSec', 'artRow', 'marksRow', 'markCtl']) $(id).hidden = simple || batch.question === 'alignment';
+    $('pageCtl').hidden = batch.question !== 'alignment';
+    for (const btn of $('decide').querySelectorAll('.dbtn')) {
+      const words = { yes: 'Yes', no: 'No', unsure: 'Unsure' }[btn.dataset.d];
+      const text = batch.question === 'alignment' && batch.answerLabels[btn.dataset.d] ? String(batch.answerLabels[btn.dataset.d]) : words;
+      if (btn.firstChild && btn.firstChild.nodeType === 3) btn.firstChild.nodeValue = text + ' ';
+    }
     for (const row of document.querySelectorAll('#helpModal .full-only')) row.hidden = simple;
     for (const row of document.querySelectorAll('#helpModal .simple-only')) row.hidden = !simple;
     if (batch.view === 'subq') $('helpMontage').hidden = true;
@@ -1547,7 +1573,13 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     hint.textContent = '';
     help.textContent = '';
     const k = t => { const e = document.createElement('kbd'); e.textContent = t; return e; };
-    if (simple && batch.teaching) {
+    if (batch.question === 'alignment') {
+      hint.append('Page through the whole clip with ', k('['), ' ', k(']'), ' (or the arrows in the bar above), then answer: ',
+        k('Y'), ' ', k('N'), ' or ', k('U'), '. Add a note if anything is off. ', k('\u2192'), ' or Next goes to the next patient.');
+      const a = help.insertCell(), b = help.insertCell();
+      a.append(k('Y'), ' ', k('N'), ' ', k('U'), ' ', k('['), ' ', k(']'));
+      b.textContent = 'Answer (aligned, not aligned, unsure); earlier or later page of the clip';
+    } else if (simple && batch.teaching) {
       hint.append('Each example is a spike an expert has read, with its type and what shows it. Press ', k('\u2192'),
         ' or ', k('Enter'), ' for the next one. The UNEEG clips open once you have seen all ' + batch.clips.length + '.' +
         (batch.view === 'both' ? ' The UNEEG channels for the same seconds are under the scalp.' : ''));
@@ -1738,13 +1770,18 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 
     const x0 = labelW, x1 = W - rightPad, tw = x1 - x0;
     const win = clipQuestion() ? 10 : Number(state.settings.win);
-    const ev = clip.event_s != null ? Number(clip.event_s) : b.eventS;
-    const tStart = ev - win / 2, pxs = tw / win;
+    const al = alignQ();
+    if (al && state.pageClip !== clip.id) { state.pageClip = clip.id; state.pageOff = 0; }
+    if (al) state.pageOff = Math.max(0, Math.min(pageCount() - 1, state.pageOff || 0));
+    const ev = al ? 0 : clip.event_s != null ? Number(clip.event_s) : b.eventS;
+    const tStart = al ? state.pageOff * win : ev - win / 2, pxs = tw / win;
+    if (al) $('pgText').textContent = (state.pageOff + 1) + ' of ' + pageCount() + ' \u00b7 ' + Math.round(tStart) + '\u2013' +
+      Math.round(Math.min(b.clipS, tStart + win)) + ' s of ' + Math.round(b.clipS) + ' s';
     const tx = t => x0 + (t - tStart) * pxs;
     const yTop = headerH, yBot = H - footerH;
 
     // candidate second
-    if (!clipQuestion() || state.admin.strips) {
+    if ((!clipQuestion() || state.admin.strips) && !al) {
       const half = b.candidateS / 2;
       const bx0 = Math.max(x0, tx(ev - half)), bx1 = Math.min(x1, tx(ev + half));
       ctx.fillStyle = C.band;
@@ -1895,7 +1932,9 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
         const t = Number(mk.t);
         if (!(t >= tStart && t <= tStart + win)) return;
         const x = Math.round(tx(t)) + 0.5;
-        const col = mk.kind === 'cyclops' ? C.cyclops : mk.kind === 'morgoth' ? C.morgoth : C.ink2;
+        // alignment review: scalp-annotated onset red, UNEEG-annotated onset green (as in the seizure figure)
+        const col = mk.kind === 'scalp' ? '#d03b3b' : mk.kind === 'uneeg' ? '#0a8f3c' :
+          mk.kind === 'cyclops' ? C.cyclops : mk.kind === 'morgoth' ? C.morgoth : C.ink2;
         ctx.strokeStyle = col;
         ctx.setLineDash([2, 3]);
         ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yBot); ctx.stroke();
@@ -2989,7 +3028,9 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   $('notchBtn').addEventListener('click', () => changeSettings({ notch: !state.settings.notch }));
   $('winSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) changeSettings({ win: Number(b.dataset.win) }); });
   $('markBtn').addEventListener('click', () => setMarkMode(!state.markMode));
-  $('decide').addEventListener('click', e => { const b = e.target.closest('.dbtn'); if (b) setDecision(b.dataset.d, { toggle: true, advance: !state.batch.training && (b.dataset.d === 'no' || (b.dataset.d === 'yes' && yesNoOnly())) }); });
+  $('decide').addEventListener('click', e => { const b = e.target.closest('.dbtn'); if (b) setDecision(b.dataset.d, { toggle: true, advance: !state.batch.training && !alignQ() && (b.dataset.d === 'no' || (b.dataset.d === 'yes' && yesNoOnly())) }); });
+  $('pgPrev').addEventListener('click', () => pageStep(-1));
+  $('pgNext').addEventListener('click', () => pageStep(1));
   $('headmap').addEventListener('click', e => { const g = e.target.closest('.el'); if (g) toggleElectrode(g.dataset.e); });
   $('headmap').addEventListener('keydown', e => {
     const g = e.target.closest('.el');
@@ -3044,7 +3085,9 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     }
     switch (e.key) {
       case 'y': case 'Y': setDecision('yes', { advance: yesNoOnly() && !state.batch.training }); break;
-      case 'n': case 'N': setDecision('no', { advance: !state.batch.training }); break;
+      case 'n': case 'N': setDecision('no', { advance: !state.batch.training && !alignQ() }); break;
+      case '[': case 'PageUp': if (alignQ()) pageStep(-1); else return; break;
+      case ']': case 'PageDown': if (alignQ()) pageStep(1); else return; break;
       case 'u': case 'U': if (!yesNoOnly()) setDecision('unsure'); break;
       case 'g': case 'G': toggleGeneralized(); break;
       case 'a': case 'A': toggleArtifact(); break;
