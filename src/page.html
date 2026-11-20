@@ -2327,6 +2327,9 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   if (SERVER) openPicker();
   if (REVIEW) {
     $('openBtn').hidden = true;
+    // nothing of the IED viewer shows until the clips are open
+    const hideUI = on => { for (const el of document.querySelectorAll('main.bench, nav.strip, #clipStrip, header')) el.style.visibility = on ? 'hidden' : ''; };
+    hideUI(true);
     $('pwModal').hidden = false;
     setTimeout(() => $('pwInput').focus(), 50);
     $('pwForm').addEventListener('submit', async e => {
@@ -2344,6 +2347,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
           state.settings.win = 20; store.set('align-win-set', '1');
         }
         $('pwModal').hidden = true;
+        hideUI(false);
         startBatch(batch, { kind: 'file' });
       } catch (err) {
         $('pwError').textContent = err && err.name === 'OperationError' ? 'That password is not right.' : (err && err.message) || String(err);
