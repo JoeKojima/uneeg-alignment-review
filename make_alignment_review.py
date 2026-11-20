@@ -47,6 +47,7 @@ from make_review_batches import FORMAT, FORMAT_VERSION, encode, write_batch  # n
 SCALP = ['Fp1', 'F3', 'C3', 'P3', 'F7', 'T3', 'T5', 'O1', 'Fz', 'Cz', 'Pz',
          'Fp2', 'F4', 'C4', 'P4', 'F8', 'T4', 'T6', 'O2']
 VIRTUAL = {'left': [('F3', 'T3'), ('F7', 'T3')], 'right': [('F4', 'T4'), ('F8', 'T4')]}
+VIRTUAL_NAMES = ['vUNEEG F3/4-T3/4', 'vUNEEG F7/8-T3/4']     # the implant side's pair
 QUESTION = 'Is the UNEEG time-aligned with the 10-20 EEG?'
 LABELS = {'yes': 'Time aligned', 'no': 'Not time aligned', 'unsure': 'Unsure'}
 
@@ -75,7 +76,9 @@ def clip_channels(sig, side, fs_out):
     for n in SCALP:
         rows.append(rs(by[n]) if n in by else None)
         names.append(n)
-    virt = [('vUNEEG ' + a + '-' + b, rs(by[a] - by[b])) for a, b in VIRTUAL[side] if a in by and b in by]
+    # one channel name for every clip whatever the implant side (a batch has one channel list); the clip's
+    # own pairs are in its details
+    virt = [(nm, rs(by[a] - by[b])) for nm, (a, b) in zip(VIRTUAL_NAMES, VIRTUAL[side])]
     dc, pc = by.get('SQDC'), by.get('SQPC')
     real = [('UNEEG D-C', rs(dc)), ('UNEEG C-P', rs(-pc)), ('UNEEG D-P', rs(dc - pc))]
     n = len(rs(by[SCALP[0]]))
@@ -145,7 +148,8 @@ def real_batch(args):
         b64, scale, _ = encode(rows)
         clips.append({'id': subj, 'event_s': 0, 'scale': scale, 'data': b64, 'bad': bad,
                       'meta': {'Patient': subj, 'Start (scalp clock, date-shifted)': t0.strftime('%Y-%m-%d %H:%M:%S'),
-                               'Piece': piece['piece_id'], 'Implant side': side}})
+                               'Piece': piece['piece_id'], 'Implant side': side,
+                               'Virtual UNEEG': ', '.join(a + '-' + b for a, b in VIRTUAL[side])}})
         key.append({'clip_id': subj, 'patient': subj, 'start_scalp_clock': t0.isoformat(), 'piece': piece['piece_id'],
                     'implant_side': side, 'clip_s': args.clip_s})
         print(f'{subj}: {t0:%Y-%m-%d %H:%M:%S}, {piece["piece_id"]}, implant {side}', flush=True)
@@ -179,6 +183,7 @@ def seizure_batch(args):
                       'meta': {'Patient': subj, 'Seizure': sz, 'Scalp onset (date-shifted)': on.strftime('%Y-%m-%d %H:%M:%S'),
                                'Seizure length (scalp)': f'{dur:.0f} s',
                                'UNEEG onset minus scalp onset': f'{du:+.1f} s', 'Implant side': side,
+                               'Virtual UNEEG': ', '.join(a + '-' + b for a, b in VIRTUAL[side]),
                                'Clip': f'{args.before:.0f} s before to {args.after:.0f} s after the scalp onset'}})
         key.append({'clip_id': cid, 'patient': subj, 'seizure': sz, 'scalp_onset': on.isoformat(),
                     'uneeg_onset_minus_scalp_onset_s': du, 'implant_side': side,
@@ -213,7 +218,8 @@ def synthetic_batch(args):
         b64, scale, _ = encode(rows)
         cid = f'demo{k + 1}'
         clips.append({'id': cid, 'event_s': 0, 'scale': scale, 'data': b64,
-                      'meta': {'Patient': f'Demo {k + 1} (synthetic)', 'Implant side': side}})
+                      'meta': {'Patient': f'Demo {k + 1} (synthetic)', 'Implant side': side,
+                               'Virtual UNEEG': ', '.join(a + '-' + b for a, b in VIRTUAL[side])}})
         key.append({'clip_id': cid, 'patient': f'demo{k + 1}', 'implant_side': side, 'true_shift_s': shift})
     return names, groups, clips, key
 
