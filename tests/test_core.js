@@ -217,6 +217,22 @@ test('Yes/No keys (1.7.5): arrows step sensitivity and move one clip; other keys
   }
 });
 
+test('montage keys (Yes/No batches and the time-alignment review): B, T, A pick banana, transverse, average', () => {
+  const want = { b: 'banana', t: 'transverse', a: 'average' };
+  for (const [key, m] of Object.entries(want)) {
+    assert.strictEqual(C.montageKey(key), m, key);
+    assert.strictEqual(C.montageKey(key.toUpperCase()), m, key.toUpperCase() + ' (Shift or Caps Lock)');
+    assert.ok(C.MONTAGES[m], m + ' is a montage the viewer draws');
+    // the Yes/No batch reads the same table, so the two modes cannot drift apart
+    assert.deepStrictEqual(C.simpleKey(key, false), { act: 'montage', value: m });
+  }
+  assert.deepStrictEqual(Object.values(C.MONTAGE_KEYS).sort(), C.MONTAGE_ORDER.slice().sort(), 'one key per montage');
+  // broken-input twins: M (cycles, handled by the page), answer keys, page keys, named keys and non-strings
+  for (const key of ['m', 'M', 'y', 'n', 'u', 'g', 'd', '[', ']', 'PageUp', 'ArrowUp', 'Backspace', 'ba', '', null, undefined, 66]) {
+    assert.strictEqual(C.montageKey(key), null, `${String(key)} is not a montage key`);
+  }
+});
+
 test('training examples (1.8.1, view both): the montage, then the UNEEG channels labelled as such', () => {
   const raw = C.makeDemoBatch('rater');
   assert.strictEqual(C.parseBatch(Object.assign({}, raw, { view: 'both' })).view, 'both');

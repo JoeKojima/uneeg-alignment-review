@@ -51,14 +51,17 @@ or **Unsure** (keys Y, N, U) and can add a note; nothing moves on until they pre
 - Hosted with a password: `python encrypt_batch.py align_review/align01.json.gz reviews/align01.enc --new-password-file <outside the repo>/PASSWORD.txt` encrypts the batch (AES-256-GCM, key from PBKDF2-SHA256 of the password); `ied_review.html?review=align01` (where `index.html` points) asks for the password, decrypts in the browser and opens the review, starting each clip centred on its scalp onset with a 20-s page. Scroll sideways (or Shift + scroll) to move in time, up or down for amplitude. The .enc file is public; only the password protects it, so share the password separately.
 - Review: open `ied_review.html` (or the hosted page), choose **Open batch**, pick `align01.json.gz`, enter your
   initials. Keys: `[` `]` (or Page Up / Page Down, or the arrows in the Time control) page through the clip,
-  Y / N / U answer, right arrow next patient. **Export labels** saves the CSV to send back; `decision` is yes
-  (time aligned), no (not time aligned) or unsure, with the note.
+  B / T / A switch to double banana, transverse or average reference (M still cycles; A is not the artifact flag
+  here), Y / N / U answer, right arrow next patient. **Manual** in the top bar explains the review; it opens by
+  itself the first time a browser opens the review (remembered in the browser's storage). **Export labels** saves
+  the CSV to send back; `decision` is yes (time aligned), no (not time aligned) or unsure, with the note.
 - Try it without data: `python make_alignment_review.py --synthetic --out demo_alignment` writes three made-up
   clips with shared blinks and chewing; the third has the device 1.5 s late, so it should be marked Not time
   aligned. The same demo batch is in `demo_alignment/`.
 - Viewer changes (src/core.js, src/page.html; rebuild with `python build.py`): batches with
   `"question": "alignment"` take their question and answer wording from `question_text` and `answer_labels`,
-  page through the whole clip from its start, and hide the field maximum, artifact and mark controls.
+  page through the whole clip from its start, and hide the field maximum, artifact and mark controls (G and D do
+  nothing there) and the clip details.
 
 ## Workflow
 

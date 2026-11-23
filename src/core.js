@@ -827,11 +827,18 @@
     };
   }
 
+  // B, T and A pick the montage (double banana, transverse, average reference), in a blinded Yes/No batch and in
+  // the time-alignment review. Returns the montage for a keydown's e.key, either case, or null.
+  const MONTAGE_KEYS = { b: 'banana', t: 'transverse', a: 'average' };
+  function montageKey(key) {
+    if (typeof key !== 'string' || key.length !== 1) return null;
+    return MONTAGE_KEYS[key.toLowerCase()] || null;
+  }
+
   // Keys in a blinded Yes/No batch (1.6.3; arrows from 1.7.5). Returns the action for a keydown's e.key, or null
   // when the key does nothing. Y and N answer and move on; B, T, A switch the montage; Up and Down step the
   // sensitivity one rung (-1 = fewer uV/mm, larger traces); Left and Right move one clip without answering;
   // S and D toggle the admin and superadmin views, only when the server sent an admin table.
-  const SIMPLE_MONTAGE_KEYS = { b: 'banana', t: 'transverse', a: 'average' };
   const SIMPLE_ARROWS = { ArrowUp: ['sens', -1], ArrowDown: ['sens', 1], ArrowLeft: ['go', -1], ArrowRight: ['go', 1] };
   function simpleKey(key, adminAvailable) {
     if (typeof key !== 'string') return null;
@@ -840,7 +847,7 @@
     const k = key.toLowerCase();
     if (k === 'y') return { act: 'decide', value: 'yes' };
     if (k === 'n') return { act: 'decide', value: 'no' };
-    if (SIMPLE_MONTAGE_KEYS[k]) return { act: 'montage', value: SIMPLE_MONTAGE_KEYS[k] };
+    if (montageKey(k)) return { act: 'montage', value: montageKey(k) };
     if (adminAvailable && k === 's') return { act: 'admin', value: 'subq' };
     if (adminAvailable && k === 'd') return { act: 'admin', value: 'strips' };
     return null;
@@ -850,7 +857,8 @@
     VERSION, FORMAT, FORMAT_VERSION, SCALP, POS, REGION, MONTAGES, MONTAGE_ORDER, EXPORT_COLUMNS, DEMO_SPECS, parseAdmin,
     normalizeName, sideOf, locationSummary, b64ToBytes, bytesToB64, decodeClip, encodeClip, parseBatch, decryptBatchBytes,
     clipSignals, deriveRows, designFilters, filtfilt, applyFilters, cyrb32, mulberry32, shuffledOrder,
-    raterSeed, csvCell, toCSV, parseCSV, exportRows, importRows, spikeShape, synthClip, makeDemoBatch, binLabel, simpleKey
+    raterSeed, csvCell, toCSV, parseCSV, exportRows, importRows, spikeShape, synthClip, makeDemoBatch, binLabel, simpleKey,
+    MONTAGE_KEYS, montageKey
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;

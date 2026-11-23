@@ -191,6 +191,10 @@ select {
 }
 .toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 700; }
 .toggle:disabled { opacity: 0.45; cursor: default; }
+/* the alignment review's Time readout wraps on a narrow screen instead of widening the page */
+#pageCtl, #pageCtl .seg { min-width: 0; }
+#pageCtl .seg button { height: auto; min-height: 30px; }
+#pgText { white-space: normal; }
 
 /* clip strip */
 .clipnav { display: flex; flex-wrap: wrap; gap: 3px; }
@@ -376,8 +380,8 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       <button class="btn" id="openBtn" type="button" hidden>Open batch</button>
       <button class="btn btn-quiet" id="importBtn" type="button" hidden>Import labels</button>
       <button class="btn btn-primary" id="exportBtn" type="button">Export labels</button>
-      <button class="btn btn-quiet" id="raterBtn" type="button" title="Change rater">Rater <b id="raterName">demo</b></button>
       <button class="btn btn-quiet" id="manualBtn" type="button" title="The manual for the part you are in" hidden>Manual</button>
+      <button class="btn btn-quiet" id="raterBtn" type="button" title="Change rater">Rater <b id="raterName">demo</b></button>
       <button class="btn btn-icon" id="helpBtn" type="button" aria-label="Keyboard shortcuts and help">?</button>
       <input type="file" id="fileInput" accept=".json,.gz,application/json,application/gzip" hidden>
       <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
@@ -515,17 +519,18 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     <h2 id="helpTitle">Keyboard shortcuts</h2>
     <table class="keys">
       <tr id="helpDecide"><td><kbd>Y</kbd> <kbd>N</kbd> <kbd>U</kbd></td><td>Yes, No (moves to the next clip), Unsure</td></tr>
-      <tr class="full-only"><td>Click an electrode</td><td>Mark the field maximum; click more than one for a broad maximum. Sets Yes if no answer is chosen.</td></tr>
-      <tr class="full-only"><td><kbd>G</kbd></td><td>Generalized discharge</td></tr>
-      <tr class="full-only"><td><kbd>A</kbd></td><td>Artifact present in the clip</td></tr>
-      <tr class="full-only"><td><kbd>D</kbd>, then click</td><td>Mark other discharges outside the highlighted second; click a mark again to remove it</td></tr>
+      <tr class="align-only" hidden><td><kbd>[</kbd> <kbd>]</kbd> or <kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Earlier or later page of the clip. Over the traces, scroll sideways (or <kbd>Shift</kbd> + scroll) to move in time, up or down for amplitude</td></tr>
+      <tr class="full-only no-align"><td>Click an electrode</td><td>Mark the field maximum; click more than one for a broad maximum. Sets Yes if no answer is chosen.</td></tr>
+      <tr class="full-only no-align"><td><kbd>G</kbd></td><td>Generalized discharge</td></tr>
+      <tr class="full-only no-align"><td><kbd>A</kbd></td><td>Artifact present in the clip</td></tr>
+      <tr class="full-only no-align"><td><kbd>D</kbd>, then click</td><td>Mark other discharges outside the highlighted second; click a mark again to remove it</td></tr>
       <tr class="full-only"><td><kbd>&rarr;</kbd> or <kbd>Enter</kbd></td><td>Next clip; <kbd>Shift</kbd> <kbd>&rarr;</kbd> jumps to the next unlabeled clip</td></tr>
       <tr class="full-only"><td><kbd>&larr;</kbd></td><td>Previous clip</td></tr>
       <tr class="full-only"><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>Larger or smaller traces (sensitivity steps)</td></tr>
+      <tr class="simple-only" id="helpMontage"><td><kbd>B</kbd> <kbd>T</kbd> <kbd>A</kbd></td><td>Double banana, transverse or average reference</td></tr>
       <tr class="full-only"><td><kbd>M</kbd></td><td>Next montage</td></tr>
       <tr class="full-only"><td><kbd>W</kbd></td><td>Switch between 10 s and 5 s pages</td></tr>
       <tr class="full-only"><td><kbd>Esc</kbd></td><td>Close this panel or stop marking</td></tr>
-      <tr class="simple-only" id="helpMontage"><td><kbd>B</kbd> <kbd>T</kbd> <kbd>A</kbd></td><td>Double banana, transverse or average reference</td></tr>
       <tr class="simple-only"><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>Larger or smaller traces (sensitivity steps)</td></tr>
       <tr class="simple-only"><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>Previous or next clip, without answering</td></tr>
       <tr class="simple-only"><td><kbd>Esc</kbd></td><td>Close this panel</td></tr>
@@ -533,7 +538,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       <tr class="admin-only" hidden><td><kbd>D</kbd></td><td>Superadmin view: each detector's score for every second of the clip, scalp and SubQ; the highlighted second is the one the clip was drawn around</td></tr>
       <tr class="admin-only" hidden><td></td><td>An answer given with either view on is saved as not blind, so it can be kept out of the blinded results</td></tr>
     </table>
-    <p>Traces follow EEG convention: negative is up. Time is in seconds from the center of the highlighted second. Labels save in this browser as you go; export the CSV when you finish and send it back. The file holds clip IDs and your answers only.</p>
+    <p id="helpNote">Traces follow EEG convention: negative is up. Time is in seconds from the center of the highlighted second. Labels save in this browser as you go; export the CSV when you finish and send it back. The file holds clip IDs and your answers only.</p>
     <div class="modal-actions"><button class="btn btn-primary" type="button" id="helpClose">Done</button></div>
   </div>
 </div>
@@ -1382,11 +1387,18 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     };
   }
 
+  // B, T and A pick the montage (double banana, transverse, average reference), in a blinded Yes/No batch and in
+  // the time-alignment review. Returns the montage for a keydown's e.key, either case, or null.
+  const MONTAGE_KEYS = { b: 'banana', t: 'transverse', a: 'average' };
+  function montageKey(key) {
+    if (typeof key !== 'string' || key.length !== 1) return null;
+    return MONTAGE_KEYS[key.toLowerCase()] || null;
+  }
+
   // Keys in a blinded Yes/No batch (1.6.3; arrows from 1.7.5). Returns the action for a keydown's e.key, or null
   // when the key does nothing. Y and N answer and move on; B, T, A switch the montage; Up and Down step the
   // sensitivity one rung (-1 = fewer uV/mm, larger traces); Left and Right move one clip without answering;
   // S and D toggle the admin and superadmin views, only when the server sent an admin table.
-  const SIMPLE_MONTAGE_KEYS = { b: 'banana', t: 'transverse', a: 'average' };
   const SIMPLE_ARROWS = { ArrowUp: ['sens', -1], ArrowDown: ['sens', 1], ArrowLeft: ['go', -1], ArrowRight: ['go', 1] };
   function simpleKey(key, adminAvailable) {
     if (typeof key !== 'string') return null;
@@ -1395,7 +1407,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     const k = key.toLowerCase();
     if (k === 'y') return { act: 'decide', value: 'yes' };
     if (k === 'n') return { act: 'decide', value: 'no' };
-    if (SIMPLE_MONTAGE_KEYS[k]) return { act: 'montage', value: SIMPLE_MONTAGE_KEYS[k] };
+    if (montageKey(k)) return { act: 'montage', value: montageKey(k) };
     if (adminAvailable && k === 's') return { act: 'admin', value: 'subq' };
     if (adminAvailable && k === 'd') return { act: 'admin', value: 'strips' };
     return null;
@@ -1405,7 +1417,8 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     VERSION, FORMAT, FORMAT_VERSION, SCALP, POS, REGION, MONTAGES, MONTAGE_ORDER, EXPORT_COLUMNS, DEMO_SPECS, parseAdmin,
     normalizeName, sideOf, locationSummary, b64ToBytes, bytesToB64, decodeClip, encodeClip, parseBatch, decryptBatchBytes,
     clipSignals, deriveRows, designFilters, filtfilt, applyFilters, cyrb32, mulberry32, shuffledOrder,
-    raterSeed, csvCell, toCSV, parseCSV, exportRows, importRows, spikeShape, synthClip, makeDemoBatch, binLabel, simpleKey
+    raterSeed, csvCell, toCSV, parseCSV, exportRows, importRows, spikeShape, synthClip, makeDemoBatch, binLabel, simpleKey,
+    MONTAGE_KEYS, montageKey
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;
@@ -1450,6 +1463,9 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   })();
   const KEY_SETTINGS = STORE_NS + 'settings';
   const KEY_RATER = STORE_NS + 'rater';
+  // the alignment review's manual opens by itself once per browser; '1' once it has
+  const KEY_ALIGN_MANUAL = STORE_NS + 'align-manual-seen';
+  const HELP_NOTE = $('helpNote').textContent;
   const DEFAULTS = { montage: 'banana', sens: 7, lff: 1, hff: 70, notch: false, win: 10 };
   const CLIP_ROWS = 3;
 
@@ -1538,13 +1554,14 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     renderControls();
     renderClip();
     if (state.sync.state === 'loading') pullServerLabels();
+    autoAlignManual();
   }
 
   // Yes/No studies (kit 1.6): no Unsure, and Yes moves on like No.
   function yesNoOnly() { return !!state.batch && !state.batch.answers.includes('unsure'); }
   // A blinded Yes/No study asks one question (kit 1.6.3): no field maximum, artifact flag or other-discharge marks,
   // and the only keys are Y, N and B, T, A for the montage. Research batches and older studies keep the full viewer.
-  const MONTAGE_KEYS = { b: 'banana', t: 'transverse', a: 'average' };
+  const MONTAGE_KEYS = Core.MONTAGE_KEYS;
   function simpleUI() { return yesNoOnly() && state.batch.mode !== 'research'; }
 
   // A clip question (kit 1.7) asks about the whole 10 s: the page stays at 10 s and no second is highlighted,
@@ -1584,8 +1601,10 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       batch.question === 'alignment' ? (batch.questionText || 'Is the UNEEG time-aligned with the 10-20 EEG?') :
       batch.question === 'clip' ? 'Epileptiform discharge anywhere in this clip?' :
       'Epileptiform discharge in the highlighted second?';
+    const align = batch.question === 'alignment';
     const qh = $('questionHint');
-    qh.hidden = !!batch.teaching || !(batch.question !== 'clip' && batch.toleranceS > 0);
+    // the alignment review explains itself in its manual (Manual, top bar), not under the answer buttons
+    qh.hidden = !!batch.teaching || align || !(batch.question !== 'clip' && batch.toleranceS > 0);
     qh.textContent = qh.hidden ? '' : toleranceText(batch);
     // UNEEG-only clips have no scalp montage to switch
     $('montageCtl').hidden = batch.view === 'subq' && !(state.admin && state.admin.subq);
@@ -1606,24 +1625,28 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     }
     for (const row of document.querySelectorAll('#helpModal .full-only')) row.hidden = simple;
     for (const row of document.querySelectorAll('#helpModal .simple-only')) row.hidden = !simple;
+    // the alignment review: paging keys, and B, T, A for the montage instead of the field maximum, G, A and D
+    for (const row of document.querySelectorAll('#helpModal .align-only')) row.hidden = !align;
+    if (align) for (const row of document.querySelectorAll('#helpModal .no-align')) row.hidden = true;
     if (batch.view === 'subq') $('helpMontage').hidden = true;
+    else if (align) $('helpMontage').hidden = false;
+    $('helpNote').textContent = align ? HELP_NOTE.replace('the center of the highlighted second', 'the scalp onset (red line)') : HELP_NOTE;
     for (const btn of $('montageSeg').children) {
-      const key = Object.keys(MONTAGE_KEYS).find(k => MONTAGE_KEYS[k] === btn.dataset.m);
-      btn.title = Core.MONTAGES[btn.dataset.m].name + (simple ? ' (' + key.toUpperCase() + ')' : ' (M cycles)');
+      const key = Object.keys(MONTAGE_KEYS).find(k => MONTAGE_KEYS[k] === btn.dataset.m).toUpperCase();
+      btn.title = Core.MONTAGES[btn.dataset.m].name + (simple ? ' (' + key + ')' : align ? ' (' + key + '; M cycles)' : ' (M cycles)');
     }
+    updateManualBtn();
     if (simple && state.markMode) state.markMode = false;
     const hint = $('decideHint'), help = $('helpDecide');
     hint.textContent = '';
+    hint.hidden = align;
     help.textContent = '';
     const k = t => { const e = document.createElement('kbd'); e.textContent = t; return e; };
-    if (batch.question === 'alignment') {
-      hint.append('Compare the 10-20, simulated UNEEG and UNEEG traces: shared events (blinks, movement, the seizure) should ' +
-        'line up. Scroll sideways (or Shift + scroll, or ', k('['), ' ', k(']'), ') to move in time; scroll up or down for ' +
-        'amplitude. Red: scalp onset; green: UNEEG-annotated onset. Answer ', k('Y'), ' ', k('N'), ' or ', k('U'),
-        ', add a note if useful, then ', k('\u2192'), ' or Next for the next seizure.');
+    if (align) {
       const a = help.insertCell(), b = help.insertCell();
-      a.append(k('Y'), ' ', k('N'), ' ', k('U'), ' ', k('['), ' ', k(']'));
-      b.textContent = 'Answer (aligned, not aligned, unsure); earlier or later page of the clip';
+      a.append(k('Y'), ' ', k('N'), ' ', k('U'));
+      const words = ['yes', 'no', 'unsure'].map(d => String(batch.answerLabels[d] || { yes: 'Yes', no: 'No', unsure: 'Unsure' }[d]));
+      b.textContent = words.join(', ') + '; none of them moves to the next clip';
     } else if (simple && batch.teaching) {
       hint.append('Each example is a spike an expert has read, with its type and what shows it. Press ', k('\u2192'),
         ' or ', k('Enter'), ' for the next one. The UNEEG clips open once you have seen all ' + batch.clips.length + '.' +
@@ -2433,6 +2456,8 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 
   function renderDetails() {
     const sec = $('detailsSec');
+    // the alignment review shows no clip details (patient, implant side): the traces are the whole question
+    if (alignQ()) { sec.hidden = true; $('detailsList').textContent = ''; return; }
     const clip = currentClip();
     const ad = viewNow() !== 'blind' ? adminItem(clip) : null;
     if (state.batch.mode !== 'research' && !ad) { sec.hidden = true; return; }
@@ -2462,7 +2487,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     }
     if (clip.meta && typeof clip.meta === 'object') for (const [k, v] of Object.entries(clip.meta)) add(k, String(v));
     if (Array.isArray(clip.markers)) for (const m of clip.markers) add('Marker', (m.label || m.kind) + ' at ' + fmtSec(Number(m.t) - Number(clip.event_s != null ? clip.event_s : state.batch.eventS)));
-    if (!alignQ()) add('Candidate', 'center at ' + Number(clip.event_s != null ? clip.event_s : state.batch.eventS).toFixed(2) + ' s of ' + state.batch.clipS + ' s');
+    add('Candidate', 'center at ' + Number(clip.event_s != null ? clip.event_s : state.batch.eventS).toFixed(2) + ' s of ' + state.batch.clipS + ' s');
     sec.hidden = false;
   }
 
@@ -2878,7 +2903,13 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       if (f === 'manual_' + part + '.html') manuals[part] = f;
     }
     lastListing = list || [];
-    $('manualBtn').hidden = !Object.keys(manuals).length;
+    updateManualBtn();
+  }
+
+  // Manual (top bar) shows when the server lists manuals, and always in the alignment review, which carries its own
+  function updateManualBtn() {
+    $('manualBtn').hidden = !alignQ() && !Object.keys(manuals).length;
+    $('manualBtn').title = alignQ() ? 'How the time-alignment review works' : 'The manual for the part you are in';
   }
 
   // the examples and the UNEEG clips get the UNEEG manual; the 10-20 clips (and an unstaged study) the 10-20 one
@@ -2888,6 +2919,7 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
   }
 
   async function openManual(part) {
+    if (!part && alignQ()) { showManual('The time-alignment review', alignManualNodes(), ''); return; }
     part = part || manualPart(state.batch);
     const file = part && manuals[part];
     if (!file) return;
@@ -2914,11 +2946,17 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       }
     }
     const h1 = main.querySelector('h1');
-    $('manualTitle').textContent = h1 ? h1.textContent : 'Manual';
+    showManual(h1 ? h1.textContent : 'Manual', [...main.children].filter(n => n.tagName !== 'H1').map(n => document.importNode(n, true)), '/' + file);
+  }
+
+  // href: the manual's own page, for Open in a new tab; '' for one the viewer carries (no page to open)
+  function showManual(title, nodes, href) {
+    $('manualTitle').textContent = title;
     const body = $('manualBody');
     body.textContent = '';
-    for (const n of main.children) if (n.tagName !== 'H1') body.appendChild(document.importNode(n, true));
-    $('manualTab').href = '/' + file;
+    body.append(...nodes);
+    $('manualTab').hidden = !href;
+    if (href) $('manualTab').href = href;
     if (openId) closeModal();
     // kit 1.8.5: opens at the top. openModal would focus the first button, Got it, at the foot of the manual, and
     // focusing it scrolls the manual to the bottom; the card takes the focus instead
@@ -2943,6 +2981,65 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
     if (answered) return;
     manualShown.add(part);
     openManual(part);
+  }
+
+  // The time-alignment review's manual, carried by the viewer (the review page has no server to serve one). Every
+  // key and control it names is wired in the keydown handler, the wheel handler or the rail.
+  const ALIGN_MANUAL_HTML = `
+<p>Each clip is one seizure, from 30 s before to 30 s after its onset on the scalp EEG. The question is whether the
+UNEEG device's recording is on the same clock as the 10-20 scalp EEG: is it <b>time-aligned</b>?</p>
+<h3>What you see</h3>
+<ul>
+<li><b>Top:</b> the 10-20 scalp EEG.</li>
+<li><b>Middle (vUNEEG):</b> two scalp pairs near the implant, F3-T3 and F7-T3 on the left or F4-T4 and F8-T4 on the right.</li>
+<li><b>Bottom:</b> the device's own channels, UNEEG D-C, C-P and D-P.</li>
+<li><b>Red line:</b> the seizure onset marked on the scalp EEG. <b>Green dashed line:</b> the onset the UNEEG reviewers
+marked, converted to scalp time. The time ruler counts seconds from the scalp onset, and each clip opens centred on it.</li>
+</ul>
+<h3>Your answer</h3>
+<p>Compare the 10-20, vUNEEG and UNEEG traces: events that show on both (blinks, movement, the seizure itself) should
+line up in time.</p>
+<ul>
+<li><b>Time aligned</b> <kbd>Y</kbd>: the shared events line up.</li>
+<li><b>Not time aligned</b> <kbd>N</kbd>: the device's events sit consistently earlier or later than the same events on
+the scalp channels.</li>
+<li><b>Unsure</b> <kbd>U</kbd>: you cannot tell, for example when no event shows clearly on both.</li>
+</ul>
+<p>Answering does not move on. Add a note if useful, then go to the next seizure.</p>
+<h3>Moving around</h3>
+<table>
+<tr><th>To</th><th>Keys, mouse or buttons</th></tr>
+<tr><td>Move in time</td><td>Scroll sideways over the traces, or <kbd>Shift</kbd> + scroll</td></tr>
+<tr><td>Earlier or later page</td><td><kbd>[</kbd> <kbd>]</kbd>, <kbd>Page Up</kbd> <kbd>Page Down</kbd>, or the arrows next to Time</td></tr>
+<tr><td>Page length</td><td>Page: 20 s, 10 s or 5 s; <kbd>W</kbd> switches between 10 s and 5 s</td></tr>
+<tr><td>Larger or smaller traces</td><td>Scroll up or down over the traces, <kbd>&uarr;</kbd> (larger) <kbd>&darr;</kbd> (smaller), or Sensitivity</td></tr>
+<tr><td>Montage</td><td><kbd>B</kbd> double banana, <kbd>T</kbd> transverse, <kbd>A</kbd> average reference; <kbd>M</kbd> cycles through them; or the Montage buttons</td></tr>
+<tr><td>Answer</td><td><kbd>Y</kbd> <kbd>N</kbd> <kbd>U</kbd>, or the buttons at the right (below the traces on a narrow screen)</td></tr>
+<tr><td>Next or previous seizure</td><td><kbd>&rarr;</kbd> or <kbd>Enter</kbd>, <kbd>&larr;</kbd>; or Next and Previous</td></tr>
+<tr><td>Next seizure without an answer</td><td><kbd>Shift</kbd> <kbd>&rarr;</kbd>, or Next unlabeled clip</td></tr>
+<tr><td>Go to any seizure</td><td>Click its square in the row above the traces (filled once answered)</td></tr>
+<tr><td>See every key</td><td><kbd>?</kbd></td></tr>
+</table>
+<h3>When you are done</h3>
+<p>Your answers are kept in this browser as you go, and the top bar counts how many you have labeled. When every seizure
+has an answer, press <b>Export labels</b>, then <b>Download</b> (or <b>Copy CSV</b>), and send the CSV back. This manual
+is under <b>Manual</b> in the top bar.</p>`;
+  function alignManualNodes() {
+    const t = document.createElement('template');
+    t.innerHTML = ALIGN_MANUAL_HTML;
+    return [...t.content.childNodes];
+  }
+
+  // It opens by itself the first time a browser opens an alignment review, once the clips are open (after the
+  // password and the initials), never over another dialog; after that only from Manual. Blocked storage (the store
+  // catches every read and write) only means it opens again next visit.
+  let alignManualDone = false;
+  function autoAlignManual() {
+    if (!alignQ() || alignManualDone || openId || !$('pwModal').hidden) return;
+    alignManualDone = true;
+    if (store.get(KEY_ALIGN_MANUAL) === '1') return;
+    store.set(KEY_ALIGN_MANUAL, '1');
+    openManual();
   }
 
   /* ---------- admin view (your own link only) ---------- */
@@ -3134,6 +3231,13 @@ dd { margin: 0; font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
       else if (a.act === 'admin') toggleAdmin(a.value);
       e.preventDefault();
       return;
+    }
+    // the alignment review: B, T, A pick the montage (so A is not the artifact flag there; M still cycles), and the
+    // field-maximum and mark keys, whose controls it hides, do nothing
+    if (alignQ()) {
+      const m = Core.montageKey(e.key);
+      if (m) { changeSettings({ montage: m }); e.preventDefault(); return; }
+      if (/^[gGdD]$/.test(e.key)) return;
     }
     switch (e.key) {
       case 'y': case 'Y': setDecision('yes', { advance: yesNoOnly() && !state.batch.training }); break;
