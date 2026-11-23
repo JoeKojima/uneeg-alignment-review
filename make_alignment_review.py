@@ -160,13 +160,16 @@ def seizure_batch(args):
     """One clip per seizure annotated on both systems (seizure_onsets.csv of the seizure figure)."""
     sides = {r['patient_id']: (r.get('implant_side') or '').strip().lower()
              for r in csv.DictReader(open(args.sides, encoding='utf-8-sig'))}
-    rows = [r for r in csv.DictReader(open(args.onsets)) if r['uneeg_onset_minus_scalp_onset_s'] not in ('', 'nan')]
+    marked = lambda r: r['uneeg_onset_minus_scalp_onset_s'] not in ('', 'nan')  # noqa: E731
+    # --allow_unmarked keeps seizures the UNEEG reviewers did not mark (no green line): the reviewer compares the
+    # traces themselves, so a clip can check the alignment without a UNEEG mark
+    rows = [r for r in csv.DictReader(open(args.onsets)) if marked(r) or args.allow_unmarked]
     rows.sort(key=lambda r: (r['subject'], int(r['sz'])))
     clips, key, names, groups = [], [], None, None
     for r in rows:
         subj, sz = r['subject'], int(r['sz'])
         on = datetime.fromisoformat(r['scalp_onset'])
-        du = float(r['uneeg_onset_minus_scalp_onset_s'])
+        du = float(r['uneeg_onset_minus_scalp_onset_s']) if marked(r) else None
         edf = os.path.join(args.data, subj, f'{subj}_continuous.edf')
         side = 'left' if sides.get(subj, '').startswith('l') else 'right'
         e = EDFPlus(edf)
@@ -177,18 +180,22 @@ def seizure_batch(args):
         b64, scale, _ = encode(rows_)
         cid = f'{subj} sz{sz}'
         dur = float(r['seizure_s'])
+        markers = [{'t': args.before, 'kind': 'scalp', 'label': 'scalp onset'}]
+        if du is not None:
+            markers.append({'t': round(args.before + du, 3), 'kind': 'uneeg', 'label': 'UNEEG onset'})
         clips.append({'id': cid, 'event_s': 0, 'scale': scale, 'data': b64, 'bad': bad,
-                      'markers': [{'t': args.before, 'kind': 'scalp', 'label': 'scalp onset'},
-                                  {'t': round(args.before + du, 3), 'kind': 'uneeg', 'label': 'UNEEG onset'}],
+                      'markers': markers,
                       'meta': {'Patient': subj, 'Seizure': sz, 'Scalp onset (date-shifted)': on.strftime('%Y-%m-%d %H:%M:%S'),
                                'Seizure length (scalp)': f'{dur:.0f} s',
-                               'UNEEG onset minus scalp onset': f'{du:+.1f} s', 'Implant side': side,
+                               'UNEEG onset minus scalp onset': f'{du:+.1f} s' if du is not None else 'not marked on UNEEG',
+                               'Implant side': side,
                                'Virtual UNEEG': ', '.join(a + '-' + b for a, b in VIRTUAL[side]),
                                'Clip': f'{args.before:.0f} s before to {args.after:.0f} s after the scalp onset'}})
         key.append({'clip_id': cid, 'patient': subj, 'seizure': sz, 'scalp_onset': on.isoformat(),
-                    'uneeg_onset_minus_scalp_onset_s': du, 'implant_side': side,
+                    'uneeg_onset_minus_scalp_onset_s': du if du is not None else '', 'implant_side': side,
                     'clip_start_scalp_clock': (on - timedelta(seconds=args.before)).isoformat()})
-        print(f'{cid}: scalp onset {on:%Y-%m-%d %H:%M:%S}, UNEEG onset {du:+.1f} s', flush=True)
+        print(f'{cid}: scalp onset {on:%Y-%m-%d %H:%M:%S}, UNEEG onset '
+              + (f'{du:+.1f} s' if du is not None else 'not marked'), flush=True)
     return names, groups, clips, key
 
 
@@ -237,6 +244,8 @@ def main():
     ap.add_argument('--fs', type=float, default=200.0)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--batch_id', default='align01')
+    ap.add_argument('--allow_unmarked', action='store_true',
+                    help='also make clips of seizures in --onsets without a UNEEG onset (no green line)')
     ap.add_argument('--synthetic', action='store_true', help='a demo batch from made-up EEG (no patient data)')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
